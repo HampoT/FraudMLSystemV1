@@ -1,0 +1,285 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 50
+                            },
+                            {
+                                "color": "red",
+                                "value": 100
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+            },
+            "pluginVersion": "10.2.0",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, rate(fraud_prediction_latency_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "P95 Latency",
+                    "refId": "A"
+                },
+                {
+                    "expr": "histogram_quantile(0.50, rate(fraud_prediction_latency_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "P50 Latency",
+                    "refId": "B"
+                }
+            ],
+            "title": "Prediction Latency (P50/P95)",
+            "type": "gauge"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "reqps"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+            },
+            "id": 2,
+            "options": {},
+            "targets": [
+                {
+                    "expr": "rate(fraud_predictions_total[5m])",
+                    "legendFormat": "Predictions/sec",
+                    "refId": "A"
+                }
+            ],
+            "title": "Request Throughput",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": [],
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 8
+            },
+            "id": 3,
+            "options": {},
+            "targets": [
+                {
+                    "expr": "sum(fraud_predictions_total{fraud_label=\"1\"}) / sum(fraud_predictions_total) * 100",
+                    "legendFormat": "Fraud Rate %",
+                    "refId": "A"
+                }
+            ],
+            "title": "Fraud Detection Rate",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": [],
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 8
+            },
+            "id": 4,
+            "options": {},
+            "targets": [
+                {
+                    "expr": "fraud_cache_hit_rate",
+                    "legendFormat": "Cache Hit Rate",
+                    "refId": "A"
+                }
+            ],
+            "title": "Cache Hit Rate",
+            "type": "gauge"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": [],
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 8
+            },
+            "id": 5,
+            "options": {},
+            "targets": [
+                {
+                    "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+                    "legendFormat": "Error Rate %",
+                    "refId": "A"
+                }
+            ],
+            "title": "Error Rate",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "mappings": []
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 16
+            },
+            "id": 6,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                },
+                "tooltip": {
+                    "mode": "single"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, rate(fraud_prediction_latency_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "P95",
+                    "refId": "A"
+                },
+                {
+                    "expr": "histogram_quantile(0.99, rate(fraud_prediction_latency_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "P99",
+                    "refId": "B"
+                },
+                {
+                    "expr": "histogram_quantile(0.50, rate(fraud_prediction_latency_seconds_bucket[5m])) * 1000",
+                    "legendFormat": "P50",
+                    "refId": "C"
+                }
+            ],
+            "title": "Latency Over Time",
+            "type": "timeseries"
+        }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+        "fraud-detection",
+        "api",
+        "monitoring"
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "Fraud Detection API Performance",
+    "uid": "fraud-api-perf",
+    "version": 1
+}

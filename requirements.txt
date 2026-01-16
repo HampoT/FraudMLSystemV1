@@ -11,10 +11,10 @@ requests
 httpx
 streamlit
 plotly
-requests
 xgboost
 shap
 slowapi
+python-jose[cryptography]
 redis
 python-dotenv
 mlflow
@@ -29,3 +29,4 @@ pre-commit
 black
 ruff
 pytest-cov
+pytest-asyncio

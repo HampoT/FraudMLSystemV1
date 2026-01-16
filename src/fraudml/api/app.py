@@ -6,13 +6,16 @@ import json
 import joblib
 import hashlib
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, List
 
 import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -30,6 +33,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
+
+# Thread pool for CPU-bound model inference
+executor = ThreadPoolExecutor(max_workers=4)
 
 model = None
 meta = None
@@ -77,6 +83,10 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
+
+# Add GZip compression for responses > 500 bytes
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -197,6 +207,7 @@ async def predict(request: Request, transaction: Transaction):
 @app.post("/v1/batch-predict", dependencies=[Depends(verify_api_key)])
 @limiter.limit("50/minute")
 async def batch_predict(request: Request, batch: BatchTransaction):
+    """Batch prediction with vectorized processing for better throughput."""
     start_time = time.time()
     batch_id = str(uuid.uuid4())
 
@@ -207,22 +218,32 @@ async def batch_predict(request: Request, batch: BatchTransaction):
         feature_cols = get_feature_names()
         threshold = meta.get("threshold", 0.5) if meta else 0.5
 
-        predictions = []
-        for tx in batch.transactions:
-            data = tx.model_dump()
-            df = pd.DataFrame([data])
+        def process_batch():
+            """Vectorized batch processing - runs in thread pool."""
+            # Build DataFrame from all transactions at once
+            batch_data = [tx.model_dump() for tx in batch.transactions]
+            df = pd.DataFrame(batch_data)
+            
+            # Engineer features for entire batch
             engineered = engineer_features(df)
             features = engineered[feature_cols]
+            
+            # Vectorized prediction for all samples
+            probs = model.predict_proba(features)[:, 1]
+            labels = (probs >= threshold).astype(int)
+            
+            return [
+                {"fraud_probability": float(p), "fraud_label": int(l)}
+                for p, l in zip(probs, labels)
+            ]
 
-            prob = model.predict_proba(features)[0, 1]
-            label = int(prob >= threshold)
-
-            predictions.append({
-                "fraud_probability": float(prob),
-                "fraud_label": label
-            })
+        # Run CPU-bound prediction in thread pool
+        loop = asyncio.get_event_loop()
+        predictions = await loop.run_in_executor(executor, process_batch)
 
         total_time = (time.time() - start_time) * 1000
+        
+        logger.info(f"Batch {batch_id}: processed {len(predictions)} in {total_time:.2f}ms")
 
         return {
             "predictions": predictions,

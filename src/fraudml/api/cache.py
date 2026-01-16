@@ -3,28 +3,47 @@ import json
 import hashlib
 import pickle
 import redis
+from redis import ConnectionPool
 import time
-from typing import Optional, Dict, Any
+import logging
+from typing import Optional, Dict, Any, List
+
+logger = logging.getLogger(__name__)
+
+# TTL Tiers (in seconds)
+TTL_SHORT = 300      # 5 min - for high-risk predictions
+TTL_MEDIUM = 1800    # 30 min - for medium-risk predictions
+TTL_LONG = 3600      # 1 hour - for low-risk predictions
+TTL_MODEL = 86400    # 24 hours - for model metadata
 
 
 class PredictionCache:
-    """Redis-based caching layer for predictions."""
+    """Redis-based caching layer for predictions with connection pooling."""
 
-    def __init__(self, redis_url: str = None, ttl: int = 3600):
+    def __init__(self, redis_url: str = None, ttl: int = TTL_MEDIUM):
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
         self.ttl = ttl
+        self._pool = None
         self._client = None
 
     @property
-    def client(self):
-        """Lazy initialization of Redis client."""
-        if self._client is None:
-            self._client = redis.Redis.from_url(
+    def pool(self):
+        """Lazy initialization of Redis connection pool."""
+        if self._pool is None:
+            self._pool = ConnectionPool.from_url(
                 self.redis_url,
-                decode_responses=True,
+                max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", "10")),
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                decode_responses=True
             )
+        return self._pool
+
+    @property
+    def client(self):
+        """Get Redis client from connection pool."""
+        if self._client is None:
+            self._client = redis.Redis(connection_pool=self.pool)
         return self._client
 
     def _get_cache_key(self, features: Dict[str, Any]) -> str:
@@ -51,22 +70,37 @@ class PredictionCache:
         return None
 
     def set(self, features: Dict[str, Any], prediction: Dict, ttl: int = None):
-        """Cache a prediction.
+        """Cache a prediction with tiered TTL based on fraud probability.
 
         Args:
             features: Transaction features
             prediction: Prediction result
-            ttl: Time to live in seconds
+            ttl: Time to live in seconds (overrides tier calculation)
         """
         try:
             key = self._get_cache_key(features)
+            
+            # Calculate tiered TTL if not explicitly provided
+            if ttl is None:
+                fraud_prob = prediction.get("fraud_probability", 0.5)
+                if fraud_prob > 0.7 or fraud_prob < 0.1:
+                    # Edge cases: shorter TTL for more volatile predictions
+                    ttl = TTL_SHORT
+                elif 0.3 < fraud_prob < 0.7:
+                    # Uncertain cases: medium TTL
+                    ttl = TTL_MEDIUM
+                else:
+                    # Clear cases: longer TTL
+                    ttl = TTL_LONG
+            
             self.client.setex(
                 key,
-                ttl or self.ttl,
+                ttl,
                 json.dumps(prediction, default=str)
             )
+            logger.debug(f"Cached prediction with TTL={ttl}s")
         except Exception as e:
-            print(f"Cache set error: {e}")
+            logger.warning(f"Cache set error: {e}")
 
     def invalidate(self, features: Dict[str, Any]):
         """Invalidate a cached prediction.
@@ -102,6 +136,26 @@ class PredictionCache:
             }
         except Exception as e:
             return {"error": str(e)}
+
+    def warm_cache(self, common_features: List[Dict[str, Any]], predictor_func):
+        """Pre-warm cache with common transaction patterns.
+        
+        Args:
+            common_features: List of common feature combinations to cache
+            predictor_func: Function that takes features and returns prediction
+        """
+        warmed = 0
+        for features in common_features:
+            try:
+                if self.get(features) is None:
+                    prediction = predictor_func(features)
+                    self.set(features, prediction, ttl=TTL_LONG)
+                    warmed += 1
+            except Exception as e:
+                logger.warning(f"Cache warming failed for features: {e}")
+        
+        logger.info(f"Cache warming complete: {warmed}/{len(common_features)} entries added")
+        return warmed
 
 
 class ModelCache:

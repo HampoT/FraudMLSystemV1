@@ -1,14 +1,25 @@
 import os
 import pandas as pd
 from sqlalchemy import create_engine, text, Column, Integer, String, Float, DateTime, Text
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
+from sqlalchemy.pool import QueuePool
 from typing import Optional, List, Dict
 from datetime import datetime
+from contextlib import contextmanager
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/fraud_db")
 
 Base = declarative_base()
+
+# Connection pool configuration
+POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))
+POOL_MAX_OVERFLOW = int(os.getenv("DB_POOL_OVERFLOW", "10"))
+POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "1800"))  # 30 minutes
+
+# Singleton engine with connection pooling
+_engine = None
 
 
 class TransactionModel(Base):
@@ -44,47 +55,67 @@ class PredictionLog(Base):
 
 
 def get_engine():
-    return create_engine(DATABASE_URL, pool_pre_ping=True)
+    """Get or create the database engine with connection pooling."""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            DATABASE_URL,
+            poolclass=QueuePool,
+            pool_size=POOL_SIZE,
+            max_overflow=POOL_MAX_OVERFLOW,
+            pool_timeout=POOL_TIMEOUT,
+            pool_recycle=POOL_RECYCLE,
+            pool_pre_ping=True,  # Check connection health before use
+        )
+    return _engine
 
 
+# Create scoped session factory (lazy init)
+_session_factory = None
+
+
+def _get_session_factory():
+    """Get or create the scoped session factory."""
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = scoped_session(sessionmaker(bind=get_engine()))
+    return _session_factory
+
+
+@contextmanager
 def get_session():
-    Session = sessionmaker(bind=get_engine())
-    return Session()
+    """Context manager for database sessions with automatic cleanup."""
+    session = _get_session_factory()()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def init_database():
+    """Initialize database tables."""
     engine = get_engine()
     Base.metadata.create_all(engine)
 
 
 def store_transaction(data: Dict) -> str:
     """Store transaction record."""
-    session = get_session()
-    try:
+    with get_session() as session:
         tx = TransactionModel(**data)
         session.add(tx)
-        session.commit()
         return data.get("transaction_id")
-    except Exception as e:
-        session.rollback()
-        raise e
-    finally:
-        session.close()
 
 
 def store_prediction(prediction_data: Dict) -> str:
     """Store prediction log."""
-    session = get_session()
-    try:
+    with get_session() as session:
         log = PredictionLog(**prediction_data)
         session.add(log)
-        session.commit()
         return prediction_data.get("prediction_id")
-    except Exception as e:
-        session.rollback()
-        raise e
-    finally:
-        session.close()
 
 
 def get_transactions(limit: int = 100) -> pd.DataFrame:
@@ -143,6 +174,20 @@ def get_model_performance_summary() -> Dict:
     return df.to_dict(orient="records")
 
 
+def get_pool_status() -> Dict:
+    """Get connection pool statistics."""
+    engine = get_engine()
+    pool = engine.pool
+    return {
+        "pool_size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "invalid": pool.invalidatedcount() if hasattr(pool, 'invalidatedcount') else 0
+    }
+
+
 if __name__ == "__main__":
     init_database()
     print("Database initialized successfully")
+    print(f"Pool status: {get_pool_status()}")
