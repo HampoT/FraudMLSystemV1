@@ -6,13 +6,25 @@ import time
 import os
 
 # --- Configuration ---
-API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000/predict")
+# Get backend URL from environment or default to localhost
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
+# Standardize URL: Ensure it ends with /predict
+if BACKEND_URL.endswith("/predict"):
+    API_URL = BACKEND_URL
+else:
+    API_URL = f"{BACKEND_URL}/predict"
+
 st.set_page_config(
     page_title="Fraud Detection System",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Warning if running on cloud without env var (heuristic: not localhost)
+if "render" not in API_URL and "127.0.0.1" not in API_URL and "localhost" not in API_URL:
+    st.sidebar.warning("⚠️ BACKEND_URL env var might be missing. Using default.")
 
 # --- CSS Styling ---
 st.markdown("""
