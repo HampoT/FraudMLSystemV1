@@ -20,3 +20,12 @@ python-dotenv
 mlflow
 evidently
 seaborn
+sqlalchemy
+psycopg2-binary
+locust
+kubernetes
+docker
+pre-commit
+black
+ruff
+pytest-cov

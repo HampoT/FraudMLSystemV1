@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Deployment
+metadata:
+  name: fraud-redis
+  labels:
+    app: fraud-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-redis
+  template:
+    metadata:
+      labels:
+        app: fraud-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: fraud-redis-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-redis
+  labels:
+    app: fraud-redis
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: fraud-redis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fraud-redis-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
