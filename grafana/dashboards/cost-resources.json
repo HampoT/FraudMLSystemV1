@@ -1,0 +1,233 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "editable": true,
+    "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 50
+                            },
+                            {
+                                "color": "red",
+                                "value": 100
+                            }
+                        ]
+                    },
+                    "unit": "currencyUSD"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "title": "Estimated Daily Cost",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(cloud_cost_daily_estimate)",
+                    "legendFormat": "Daily Cost",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 0
+            },
+            "id": 2,
+            "title": "Total API Requests (24h)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(increase(http_requests_total[24h]))",
+                    "legendFormat": "Requests",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "currencyUSD"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 0
+            },
+            "id": 3,
+            "title": "Cost per 1000 Predictions",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(cloud_cost_daily_estimate) / (sum(increase(fraud_predictions_total[24h])) / 1000)",
+                    "legendFormat": "Cost/1K",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "id": 4,
+            "title": "Cost by Service",
+            "type": "piechart",
+            "targets": [
+                {
+                    "expr": "cloud_cost_by_service",
+                    "legendFormat": "{{service}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "id": 5,
+            "title": "Cost Trend (7 days)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum(cloud_cost_daily_estimate)",
+                    "legendFormat": "Daily Cost",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 0,
+                "y": 18
+            },
+            "id": 6,
+            "title": "CPU Utilization",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "avg(container_cpu_usage_seconds_total)",
+                    "legendFormat": "CPU",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 8,
+                "y": 18
+            },
+            "id": 7,
+            "title": "Memory Usage",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "avg(container_memory_usage_bytes) / avg(container_spec_memory_limit_bytes)",
+                    "legendFormat": "Memory",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 8,
+                "x": 16,
+                "y": 18
+            },
+            "id": 8,
+            "title": "Active Pods",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "count(up{job=\"fraud-api\"})",
+                    "legendFormat": "Pods",
+                    "refId": "A"
+                }
+            ]
+        }
+    ],
+    "refresh": "5m",
+    "schemaVersion": 38,
+    "tags": [
+        "fraud-detection",
+        "cost",
+        "resources"
+    ],
+    "time": {
+        "from": "now-7d",
+        "to": "now"
+    },
+    "title": "Cost & Resources Dashboard",
+    "uid": "fraud-cost",
+    "version": 1
+}

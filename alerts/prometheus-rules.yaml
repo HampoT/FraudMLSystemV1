@@ -1,0 +1,184 @@
+# Prometheus Alert Rules for Fraud Detection System
+# Deploy to Prometheus via ConfigMap
+---
+groups:
+  - name: fraud-api-alerts
+    rules:
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) /
+          sum(rate(http_requests_total[5m])) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1%)"
+          runbook_url: "https://wiki.example.com/runbooks/fraud-api-errors"
+
+      # High Latency Alert (P95 > 500ms)
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, rate(fraud_prediction_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "High P95 latency detected"
+          description: "P95 latency is {{ $value | humanizeDuration }} (threshold: 500ms)"
+
+      # Very High Latency (P99 > 1s)
+      - alert: VeryHighLatency
+        expr: |
+          histogram_quantile(0.99, rate(fraud_prediction_latency_seconds_bucket[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Very high P99 latency"
+          description: "P99 latency is {{ $value | humanizeDuration }}"
+
+      # Low Cache Hit Rate
+      - alert: LowCacheHitRate
+        expr: fraud_cache_hit_rate < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (expected: >50%)"
+
+      # Pod Not Ready
+      - alert: PodNotReady
+        expr: |
+          kube_pod_status_ready{namespace="fraud-detection", condition="true"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Pod not ready"
+          description: "Pod {{ $labels.pod }} has been not ready for 5 minutes"
+
+  - name: fraud-model-alerts
+    rules:
+      # Data Drift Detected
+      - alert: DataDriftDetected
+        expr: fraud_data_drift_score > 0.3
+        for: 30m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Data drift detected"
+          description: "Drift score is {{ $value }} (threshold: 0.3)"
+          action: "Consider retraining the model"
+
+      # Model Accuracy Drop
+      - alert: ModelAccuracyDrop
+        expr: fraud_model_accuracy < 0.8
+        for: 1h
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Model accuracy has dropped"
+          description: "Current accuracy: {{ $value | humanizePercentage }}"
+
+      # Unusual Fraud Rate
+      - alert: UnusualFraudRate
+        expr: |
+          abs(
+            rate(fraud_predictions_total{fraud_label="1"}[1h]) /
+            rate(fraud_predictions_total[1h]) -
+            avg_over_time((rate(fraud_predictions_total{fraud_label="1"}[1h]) /
+            rate(fraud_predictions_total[1h]))[7d:1h])
+          ) > 0.1
+        for: 30m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Unusual fraud rate detected"
+          description: "Fraud rate has deviated significantly from 7-day average"
+
+  - name: fraud-cost-alerts
+    rules:
+      # Cost Spike
+      - alert: CostSpike
+        expr: |
+          sum(cloud_cost_daily_estimate) >
+          (avg_over_time(sum(cloud_cost_daily_estimate)[7d:1d]) * 1.2)
+        for: 6h
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Cost spike detected"
+          description: "Daily cost is 20% above 7-day average"
+
+      # High Lambda Invocations
+      - alert: HighLambdaInvocations
+        expr: |
+          sum(rate(aws_lambda_invocations_total[1h])) > 10000
+        for: 30m
+        labels:
+          severity: info
+          team: ml-platform
+        annotations:
+          summary: "High Lambda invocation rate"
+          description: "Current rate: {{ $value }} invocations/hour"
+
+  - name: fraud-infrastructure-alerts
+    rules:
+      # Database Connection Issues
+      - alert: DatabaseConnectionIssues
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Database connection failed"
+          description: "Cannot connect to PostgreSQL database"
+
+      # Redis Connection Issues
+      - alert: RedisConnectionIssues
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Redis connection failed"
+          description: "Cannot connect to Redis cache"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          container_memory_usage_bytes{namespace="fraud-detection"} /
+          container_spec_memory_limit_bytes{namespace="fraud-detection"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "High memory usage"
+          description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of memory limit"
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          rate(container_cpu_usage_seconds_total{namespace="fraud-detection"}[5m]) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "High CPU usage"
+          description: "Container {{ $labels.container }} CPU usage is above 90%"

@@ -1,0 +1,307 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.8
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 6,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "title": "Model Accuracy",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "fraud_model_accuracy",
+                    "legendFormat": "Accuracy",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.8
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.9
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 6,
+                "x": 6,
+                "y": 0
+            },
+            "id": 2,
+            "title": "Model Precision",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "fraud_model_precision",
+                    "legendFormat": "Precision",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.5
+                            },
+                            {
+                                "color": "green",
+                                "value": 0.7
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 6,
+                "x": 12,
+                "y": 0
+            },
+            "id": 3,
+            "title": "Model Recall",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "fraud_model_recall",
+                    "legendFormat": "Recall",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 6,
+                "x": 18,
+                "y": 0
+            },
+            "id": 4,
+            "title": "F1 Score",
+            "type": "gauge",
+            "targets": [
+                {
+                    "expr": "fraud_model_f1_score",
+                    "legendFormat": "F1",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    }
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "id": 5,
+            "title": "Data Drift Score",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "fraud_data_drift_score",
+                    "legendFormat": "Drift Score",
+                    "refId": "A"
+                }
+            ],
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            }
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    }
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "id": 6,
+            "title": "Fraud Rate Over Time",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "rate(fraud_predictions_total{fraud_label=\"1\"}[5m]) / rate(fraud_predictions_total[5m])",
+                    "legendFormat": "Fraud Rate",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 18
+            },
+            "id": 7,
+            "title": "Prediction Confidence Distribution",
+            "type": "histogram",
+            "targets": [
+                {
+                    "expr": "fraud_prediction_confidence_bucket",
+                    "legendFormat": "{{le}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 18
+            },
+            "id": 8,
+            "title": "Model Version Comparison",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "fraud_model_accuracy by (model_version)",
+                    "legendFormat": "{{model_version}}",
+                    "refId": "A"
+                }
+            ]
+        }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "tags": [
+        "fraud-detection",
+        "model",
+        "ml"
+    ],
+    "time": {
+        "from": "now-24h",
+        "to": "now"
+    },
+    "title": "Model Performance Dashboard",
+    "uid": "fraud-model-perf",
+    "version": 1
+}

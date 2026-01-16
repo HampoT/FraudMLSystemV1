@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fraud Detection API - Serverless Deployment
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
+    Runtime: python3.12
+    Environment:
+      Variables:
+        REDIS_URL: !Ref RedisUrl
+        LOG_LEVEL: INFO
+
+Parameters:
+  RedisUrl:
+    Type: String
+    Description: Redis connection URL
+    Default: redis://localhost:6379
+  
+  ApiKey:
+    Type: String
+    Description: API Key for authentication
+    NoEcho: true
+  
+  ModelBucket:
+    Type: String
+    Description: S3 bucket containing model artifacts
+
+Resources:
+  # Lambda Layer with model dependencies
+  ModelDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: fraud-model-dependencies
+      Description: Dependencies for fraud detection model
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
+  # Lambda Layer with trained model
+  ModelArtifactsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: fraud-model-artifacts
+      Description: Trained model and metadata
+      ContentUri: layers/model/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
+  # Prediction Lambda Function
+  PredictFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: fraud-predict
+      Handler: predict.handler
+      CodeUri: functions/predict/
+      Description: Fraud detection prediction endpoint
+      Layers:
+        - !Ref ModelDependenciesLayer
+        - !Ref ModelArtifactsLayer
+      Environment:
+        Variables:
+          API_KEY: !Ref ApiKey
+          MODEL_BUCKET: !Ref ModelBucket
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
+      Events:
+        PredictApi:
+          Type: Api
+          Properties:
+            Path: /v1/predict
+            Method: post
+            RestApiId: !Ref FraudApi
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 5
+
+  # Batch Predict Lambda Function
+  BatchPredictFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: fraud-batch-predict
+      Handler: batch_predict.handler
+      CodeUri: functions/batch_predict/
+      Description: Batch fraud detection predictions
+      MemorySize: 2048
+      Timeout: 60
+      Layers:
+        - !Ref ModelDependenciesLayer
+        - !Ref ModelArtifactsLayer
+      Environment:
+        Variables:
+          API_KEY: !Ref ApiKey
+          MODEL_BUCKET: !Ref ModelBucket
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
+      Events:
+        BatchApi:
+          Type: Api
+          Properties:
+            Path: /v1/batch-predict
+            Method: post
+            RestApiId: !Ref FraudApi
+
+  # API Gateway
+  FraudApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: FraudDetectionAPI
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST,GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-API-Key,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: FraudAPIUsagePlan
+          Quota:
+            Limit: 10000
+            Period: DAY
+          Throttle:
+            BurstLimit: 200
+            RateLimit: 100
+
+  # Health Check Function
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: fraud-health
+      Handler: health.handler
+      CodeUri: functions/health/
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        HealthApi:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: get
+            RestApiId: !Ref FraudApi
+
+  # CloudWatch Dashboard
+  FraudDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: FraudDetectionDashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Lambda Invocations",
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${PredictFunction}"],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${BatchPredictFunction}"]
+                ],
+                "period": 60,
+                "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Lambda Duration",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${PredictFunction}"],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${BatchPredictFunction}"]
+                ],
+                "period": 60,
+                "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Lambda Errors",
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${PredictFunction}"],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${BatchPredictFunction}"]
+                ],
+                "period": 60,
+                "stat": "Sum"
+              }
+            }
+          ]
+        }
+
+  # Cost Alert
+  CostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: FraudAPIHighCost
+      AlarmDescription: Alert when estimated charges exceed threshold
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Statistic: Maximum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Currency
+          Value: USD
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${FraudApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  
+  PredictFunctionArn:
+    Description: Predict Lambda function ARN
+    Value: !GetAtt PredictFunction.Arn
+  
+  BatchPredictFunctionArn:
+    Description: Batch Predict Lambda function ARN
+    Value: !GetAtt BatchPredictFunction.Arn

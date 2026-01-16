@@ -1,0 +1,209 @@
+# EU West Region Deployment
+# Fraud Detection System - Secondary Region
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraud-detection
+  labels:
+    region: eu-west
+    environment: production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-api-config
+  namespace: fraud-detection
+  labels:
+    region: eu-west
+data:
+  REGION: eu-west
+  MODEL_PATH: /app/artifacts/model.joblib
+  META_PATH: /app/artifacts/model_meta.json
+  REDIS_URL: redis://fraud-redis:6379
+  # Use local read replica, write to primary
+  DATABASE_URL: postgresql://postgres:postgres@fraud-db-replica:5432/fraud_db
+  PRIMARY_DATABASE_URL: postgresql://postgres:postgres@fraud-db-primary.us-east.svc.cluster.local:5432/fraud_db
+  LOG_LEVEL: INFO
+  PROMETHEUS_ENABLED: "true"
+  IS_PRIMARY_REGION: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-api
+  namespace: fraud-detection
+  labels:
+    app: fraud-api
+    region: eu-west
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fraud-api
+      region: eu-west
+  template:
+    metadata:
+      labels:
+        app: fraud-api
+        region: eu-west
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: fraud-api
+              topologyKey: "topology.kubernetes.io/zone"
+      containers:
+      - name: api
+        image: ghcr.io/hampot/fraudmlsystemv1:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: fraud-api-config
+        - secretRef:
+            name: fraud-api-secret
+        env:
+        - name: REGION
+          value: "eu-west"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/artifacts
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: fraud-model-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-api
+  namespace: fraud-detection
+  labels:
+    region: eu-west
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: fraud-api
+    region: eu-west
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraud-api-hpa
+  namespace: fraud-detection
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraud-api
+  minReplicas: 2
+  maxReplicas: 30
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+---
+# PostgreSQL Read Replica for EU-West
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fraud-db-replica
+  namespace: fraud-detection
+spec:
+  serviceName: fraud-db-replica
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-db
+      role: replica
+      region: eu-west
+  template:
+    metadata:
+      labels:
+        app: fraud-db
+        role: replica
+        region: eu-west
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_DB
+          value: fraud_db
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: fraud-db-secret
+              key: password
+        # Replica mode - connects to primary
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        # Init container could be added for streaming replication setup
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-db-replica
+  namespace: fraud-detection
+spec:
+  ports:
+  - port: 5432
+  selector:
+    app: fraud-db
+    role: replica
+    region: eu-west

@@ -1,0 +1,183 @@
+# Global Load Balancer Configuration
+# Uses CloudFlare for DNS-based global load balancing with health checks
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-lb-config
+  namespace: fraud-detection
+data:
+  # CloudFlare configuration template
+  cloudflare.json: |
+    {
+      "zone_id": "${CLOUDFLARE_ZONE_ID}",
+      "dns_record": "api.fraud-detection.example.com",
+      "load_balancer": {
+        "name": "fraud-api-global-lb",
+        "fallback_pool": "us-east-pool",
+        "default_pools": ["us-east-pool", "eu-west-pool", "asia-pacific-pool"],
+        "region_pools": {
+          "WNAM": ["us-east-pool"],
+          "ENAM": ["us-east-pool"],
+          "WEU": ["eu-west-pool"],
+          "EEU": ["eu-west-pool"],
+          "SEAS": ["asia-pacific-pool"],
+          "NEAS": ["asia-pacific-pool"],
+          "OC": ["asia-pacific-pool"]
+        },
+        "session_affinity": "cookie",
+        "session_affinity_ttl": 1800,
+        "steering_policy": "geo"
+      },
+      "pools": [
+        {
+          "name": "us-east-pool",
+          "origins": [
+            {
+              "name": "us-east-1",
+              "address": "us-east.fraud-api.example.com",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "monitor": "health-check-monitor",
+          "notification_email": "ops@example.com"
+        },
+        {
+          "name": "eu-west-pool",
+          "origins": [
+            {
+              "name": "eu-west-1",
+              "address": "eu-west.fraud-api.example.com",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "monitor": "health-check-monitor"
+        },
+        {
+          "name": "asia-pacific-pool",
+          "origins": [
+            {
+              "name": "asia-pacific-1",
+              "address": "asia-pacific.fraud-api.example.com",
+              "enabled": true,
+              "weight": 1.0
+            }
+          ],
+          "monitor": "health-check-monitor"
+        }
+      ],
+      "monitors": [
+        {
+          "name": "health-check-monitor",
+          "type": "https",
+          "expected_codes": "2xx",
+          "method": "GET",
+          "path": "/health",
+          "timeout": 5,
+          "interval": 30,
+          "retries": 2,
+          "description": "Health check for fraud API"
+        }
+      ]
+    }
+---
+# Failover configuration script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failover-scripts
+  namespace: fraud-detection
+data:
+  failover.sh: |
+    #!/bin/bash
+    # Failover script for multi-region deployment
+    
+    set -e
+    
+    REGION=$1
+    ACTION=$2  # enable or disable
+    
+    if [ -z "$REGION" ] || [ -z "$ACTION" ]; then
+      echo "Usage: failover.sh <region> <enable|disable>"
+      exit 1
+    fi
+    
+    # CloudFlare API endpoint
+    CF_API="https://api.cloudflare.com/client/v4"
+    
+    case $ACTION in
+      enable)
+        echo "Enabling region: $REGION"
+        # Enable pool in CloudFlare
+        curl -X PATCH "$CF_API/accounts/$CF_ACCOUNT_ID/load_balancers/pools/$REGION-pool" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"enabled": true}'
+        ;;
+      disable)
+        echo "Disabling region: $REGION"
+        # Disable pool in CloudFlare
+        curl -X PATCH "$CF_API/accounts/$CF_ACCOUNT_ID/load_balancers/pools/$REGION-pool" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"enabled": false}'
+        ;;
+      *)
+        echo "Unknown action: $ACTION"
+        exit 1
+        ;;
+    esac
+    
+    echo "Failover action completed"
+  
+  health-check.sh: |
+    #!/bin/bash
+    # Health check script for all regions
+    
+    REGIONS=("us-east" "eu-west" "asia-pacific")
+    ENDPOINTS=(
+      "https://us-east.fraud-api.example.com/health"
+      "https://eu-west.fraud-api.example.com/health"
+      "https://asia-pacific.fraud-api.example.com/health"
+    )
+    
+    for i in "${!REGIONS[@]}"; do
+      region=${REGIONS[$i]}
+      endpoint=${ENDPOINTS[$i]}
+      
+      status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$endpoint" || echo "000")
+      
+      if [ "$status" = "200" ]; then
+        echo "✅ $region: healthy"
+      else
+        echo "❌ $region: unhealthy (HTTP $status)"
+        # Could trigger alert or failover here
+      fi
+    done
+---
+# CronJob for periodic health checks
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: global-health-check
+  namespace: fraud-detection
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: health-checker
+            image: curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              for region in us-east eu-west asia-pacific; do
+                status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "https://${region}.fraud-api.example.com/health" || echo "000")
+                echo "${region}: ${status}"
+              done
+          restartPolicy: OnFailure

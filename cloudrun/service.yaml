@@ -1,0 +1,100 @@
+# Google Cloud Run Configuration
+# Fraud Detection API - Serverless Deployment
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: fraud-api
+  labels:
+    app: fraud-api
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # Auto-scaling configuration
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "100"
+        autoscaling.knative.dev/target: "80"
+        # Container startup optimization
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 60
+      containers:
+      - image: gcr.io/PROJECT_ID/fraud-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL_PATH
+          value: /app/artifacts/model.joblib
+        - name: META_PATH
+          value: /app/artifacts/model_meta.json
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: fraud-secrets
+              key: redis-url
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-secrets
+              key: api-key
+        - name: LOG_LEVEL
+          value: INFO
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+  traffic:
+  - percent: 100
+    latestRevision: true
+---
+# Cloud Run Service with traffic splitting for canary
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: fraud-api-canary
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      name: fraud-api-canary-v2
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      containerConcurrency: 80
+      containers:
+      - image: gcr.io/PROJECT_ID/fraud-api:canary
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+  traffic:
+  - percent: 90
+    revisionName: fraud-api-canary-v1  # Current stable
+  - percent: 10
+    revisionName: fraud-api-canary-v2  # Canary
+    tag: canary
