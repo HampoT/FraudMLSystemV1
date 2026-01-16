@@ -1,0 +1,17 @@
+{
+  "model_version": "2026-01-16T00:16:33.068343",
+  "algorithm": "LogisticRegression",
+  "features": [
+    "amount",
+    "hour",
+    "device_score",
+    "country_risk"
+  ],
+  "threshold": 0.5,
+  "target_precision": 0.95,
+  "metrics_val": {
+    "roc_auc": 0.7175646269559643,
+    "pr_auc": 0.09941591207722622
+  },
+  "seed": 42
+}
