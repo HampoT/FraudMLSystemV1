@@ -45,19 +45,25 @@ Wait for the build to finish. You will get a URL like `https://fraud-api.onrende
 
 We will use **Streamlit Cloud** (free, easiest for Streamlit apps).
 
-### 1. Update API URL
-In `src/fraudml/ui/dashboard.py`, you need to point the dashboard to your *live* backend instead of localhost.
+### 1. Update Secrets (Environment Variables)
+In Streamlit Cloud "Advanced Settings" or "Secrets":
 
-**Option A (Hardcode)**:
-Change line 6 in `dashboard.py`:
-```python
-API_URL = "https://fraud-api.onrender.com/predict" # Use your actual Render URL
+1.  Add `BACKEND_URL`.
+2.  Set it to your Render URL (without `/predict`, though the code handles it).
+
+Example TOML format in Streamlit Secrets:
+```toml
+BACKEND_URL = "https://fraud-api.onrender.com"
 ```
 
-**Option B (Environment Variable - Recommended)**:
-Use `os.getenv` in python and set the variable in Streamlit Cloud secrets.
-
 ### 2. Deploy to Streamlit Cloud
+1.  Go to [share.streamlit.io](https://share.streamlit.io/).
+2.  Click **New App**.
+3.  Choose Repository: `FraudMLSystemV1`.
+4.  Main file path: `src/fraudml/ui/dashboard.py`.
+5.  Click **Deploy**.
+
+The app will now use the environment variable to connect to the backend.
 1.  Go to [share.streamlit.io](https://share.streamlit.io/).
 2.  Click **New App**.
 3.  Select your GitHub repo, branch, and file path: `src/fraudml/ui/dashboard.py`.
