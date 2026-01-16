@@ -6,6 +6,8 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import subprocess
+import sys
 
 # Global variables for model artifacts
 model = None
@@ -18,11 +20,33 @@ async def lifespan(app: FastAPI):
     model_path = os.getenv("MODEL_PATH", "artifacts/model.joblib")
     meta_path = os.getenv("META_PATH", "artifacts/model_meta.json")
     
+    # --- Bootstrap: Train model if missing (for Render) ---
+    if not os.path.exists(model_path):
+        print(f"Artifacts not found at {model_path}. Bootstrapping model...")
+        try:
+            # 1. Download Data
+            print("Running data download...")
+            subprocess.check_call([sys.executable, "src/fraudml/data/download.py"])
+            
+            # 2. Preprocess
+            print("Running preprocessing...")
+            subprocess.check_call([sys.executable, "src/fraudml/data/preprocess.py"])
+            
+            # 3. Train
+            print("Running training...")
+            subprocess.check_call([sys.executable, "src/fraudml/models/train.py"])
+            
+            print("Bootstrap complete. Model trained.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error during bootstrap: {e}")
+            # We don't raise here to let the app start (albeit health check will fail on model_loaded)
+            
+    # --- Load Model ---
     if os.path.exists(model_path):
         model = joblib.load(model_path)
         print(f"Loaded model from {model_path}")
     else:
-        print(f"Warning: Model not found at {model_path}")
+        print(f"CRITICAL: Model not found at {model_path} even after bootstrap attempt.")
         
     if os.path.exists(meta_path):
         with open(meta_path, 'r') as f:
