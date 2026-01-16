@@ -12,3 +12,11 @@ httpx
 streamlit
 plotly
 requests
+xgboost
+shap
+slowapi
+redis
+python-dotenv
+mlflow
+evidently
+seaborn
